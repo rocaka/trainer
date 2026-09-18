@@ -1,0 +1,19 @@
+id: programming.fundamentals
+status: verified
+learningPath:
+  - programming.code-is-instructions
+  - programming.values-and-labels
+  - programming.expressions-and-changes
+  - programming.conditions
+  - programming.functions
+  - programming.collections
+  - programming.debugging
+  - programming.projects
+entryPolicy:
+  default: beginner
+  advancedEntry: "Require explicit learner self-report or diagnostic evidence."
+firstLesson:
+  humanIntent: "请帮我记住：这位同学叫小明。"
+  syntax: "let name = \"小明\""
+  newConcepts: [value, label]
+  forbiddenAssumptions: [variable, type, function, runtime]

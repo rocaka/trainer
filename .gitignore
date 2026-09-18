@@ -1,0 +1,13 @@
+.DS_Store
+Trainer/.build/
+dist/
+gateway/__pycache__/
+**/__pycache__/
+gateway/trainer-learning.sqlite3
+learning-plans/
+saved-courses/
+job-history/
+pending-approvals/
+.env
+.env.*
+!.env.example

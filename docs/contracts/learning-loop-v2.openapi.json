@@ -1,0 +1,45 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Trainer P1 native-session adapter", "version": "0.1.0", "description": "Implemented adapter contract; NOT mounted in production. Extension pairing is P2. No public scoring or exercise registration route."},
+  "servers": [{"url": "http://127.0.0.1:8787"}],
+  "security": [{"NativeSession": []}],
+  "components": {
+    "securitySchemes": {"NativeSession": {"type": "apiKey", "in": "header", "name": "X-Trainer-Session"}},
+    "schemas": {
+      "Error": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"enum": ["unauthorized", "payload_too_large", "not_found", "invalid_request", "invalid_state", "storage_unavailable"]}, "message": {"type": "string"}}}}},
+      "Submission": {"type": "object", "required": ["id", "exerciseId", "revision", "status", "kind", "answer", "createdAt", "assessment"], "properties": {
+        "id": {"type": "string", "pattern": "^[a-f0-9]{32}$"}, "exerciseId": {"type": "string"}, "revision": {"type": "integer"},
+        "status": {"enum": ["queued", "evaluating", "passed", "needs_revision", "failed", "cancelled", "insufficient_evidence"]},
+        "kind": {"enum": ["reflection", "reading", "writing", "debugging", "transfer"]}, "answer": {"type": "string"}, "createdAt": {"type": "string", "format": "date-time"},
+        "assessment": {"type": ["object", "null"], "properties": {"result": {"$ref": "learning-loop-v2.schema.json#/$defs/staticResult"}, "model": {"type": "string"}, "method": {"const": "static_review"}}}
+      }}
+    },
+    "responses": {"Error": {"description": "Structured error; no credentials or upstream body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}
+  },
+  "paths": {
+    "/v2/exercises/{exerciseId}": {
+      "get": {
+        "parameters": [{"name": "exerciseId", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,200}$"}}, {"name": "revision", "in": "query", "required": true, "schema": {"type": "integer", "minimum": 1, "maximum": 999999999}}],
+        "responses": {"200": {"description": "Immutable exercise revision", "content": {"application/json": {"schema": {"$ref": "learning-loop-v2.schema.json#/$defs/exercise"}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/v2/submissions": {
+      "post": {
+        "description": "Native local learner only. Maximum body 64 KiB. Idempotency key is required in body. Code/report/execution exercises are rejected until material collection is implemented.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "learning-loop-v2.schema.json#/$defs/textSubmission"}}}},
+        "responses": {"202": {"description": "Submission stored; duplicate request returns same ID and current status", "content": {"application/json": {"schema": {"type": "object", "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"type": "string"}}}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/v2/submissions/{id}": {
+      "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"}}],
+      "get": {"responses": {"200": {"description": "Owned submission and optional assessment", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Submission"}}}}, "default": {"$ref": "#/components/responses/Error"}}}
+    },
+    "/v2/submissions/{id}/cancel": {
+      "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"}}],
+      "post": {"description": "Only queued/evaluating/cancelled submissions. Completed results return 409. Cancelling does not prove an upstream request was not billed.",
+        "requestBody": {"content": {"application/json": {"schema": {"type": "object", "additionalProperties": false}}}},
+        "responses": {"200": {"description": "Cancelled", "content": {"application/json": {"schema": {"type": "object", "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"const": "cancelled"}}}}}}, "default": {"$ref": "#/components/responses/Error"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trainer learning loop P1 contracts (not public HTTP endpoints)",
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 16000},
+    "id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "exercise": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exerciseId", "revision", "planId", "lessonId", "kind", "prompt", "learningObjectives", "submissionSpec", "contextHints", "rubric", "passRule", "verificationRequirement"],
+      "properties": {
+        "exerciseId": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,200}$"},
+        "revision": {"type": "integer", "minimum": 1},
+        "planId": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "lessonId": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["reflection", "reading", "writing", "debugging", "transfer"]},
+        "prompt": {"$ref": "#/$defs/text"},
+        "learningObjectives": {"type": "array", "minItems": 1, "maxItems": 100, "items": {"type": "string", "minLength": 1, "maxLength": 1000}},
+        "contextHints": {"type": "array", "maxItems": 100, "items": {"type": "string", "minLength": 1, "maxLength": 1000}},
+        "submissionSpec": {
+          "type": "object", "additionalProperties": false, "required": ["answer", "code", "report"],
+          "properties": {"answer": {"type": "boolean"}, "code": {"type": "boolean"}, "report": {"type": "boolean"}}
+        },
+        "rubric": {
+          "type": "array", "minItems": 1, "maxItems": 20,
+          "items": {"type": "object", "additionalProperties": false, "required": ["id", "description", "maxScore"],
+            "properties": {"id": {"type": "string", "minLength": 1, "maxLength": 100}, "description": {"type": "string", "minLength": 1, "maxLength": 2000}, "maxScore": {"type": "integer", "minimum": 1, "maximum": 100}}}
+        },
+        "passRule": {"type": "object", "additionalProperties": false, "required": ["minimumScore"], "properties": {"minimumScore": {"type": "integer", "minimum": 1, "maximum": 2000}}},
+        "verificationRequirement": {"enum": ["static_review", "user_report", "trusted_execution"]}
+      }
+    },
+    "textSubmission": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exerciseId", "revision", "answer", "idempotencyKey"],
+      "properties": {"exerciseId": {"$ref": "#/$defs/id"}, "revision": {"type": "integer", "minimum": 1}, "answer": {"$ref": "#/$defs/text"}, "idempotencyKey": {"$ref": "#/$defs/id"}}
+    },
+    "staticResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scores", "quote", "feedback", "nextStep"],
+      "properties": {"scores": {"type": "object", "minProperties": 1, "maxProperties": 20, "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 100}}, "quote": {"$ref": "#/$defs/text"}, "feedback": {"$ref": "#/$defs/text"}, "nextStep": {"$ref": "#/$defs/text"}}
+    }
+  },
+  "$comment": "Use individual $defs. Runtime validator additionally checks whitespace, unique rubric IDs, score/threshold bounds, kind/material compatibility and literal evidence quotes. Submission has no kind, score, pass or reward fields."
+}

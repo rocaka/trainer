@@ -1,0 +1,42 @@
+version: 0.1.0
+title: "Trainer foundational curriculum map"
+rules:
+  - "Every domain skill declares a path to these foundations."
+  - "A complete beginner sees human intent before source code."
+  - "One new abstraction per first example."
+  - "Learner self-report may skip a unit, but never hides it."
+foundations:
+  - id: programming.code-is-instructions
+    title: "代码是什么：把意图写成精确步骤"
+    order: 0
+  - id: programming.values-and-labels
+    title: "值与变量：给信息命名"
+    order: 1
+    requires: [programming.code-is-instructions]
+  - id: programming.expressions-and-changes
+    title: "表达式与变化"
+    order: 2
+    requires: [programming.values-and-labels]
+  - id: programming.conditions
+    title: "条件判断"
+    order: 3
+    requires: [programming.expressions-and-changes]
+  - id: programming.functions
+    title: "函数：给一组步骤命名"
+    order: 4
+    requires: [programming.conditions]
+  - id: programming.collections
+    title: "数据结构：组织相关信息"
+    order: 5
+    requires: [programming.functions]
+  - id: programming.debugging
+    title: "调试：观察、预测、修复"
+    order: 6
+    requires: [programming.functions]
+  - id: programming.projects
+    title: "文件、模块与小项目"
+    order: 7
+    requires: [programming.debugging, programming.collections]
+domainEntry:
+  blockchain.solidity.evm: [programming.functions, programming.conditions, programming.collections, programming.debugging]
+  ai.rag: [programming.functions, programming.collections, programming.projects]

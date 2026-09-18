@@ -1,0 +1,14 @@
+services:
+  accounts:
+    build:
+      context: ../..
+      dockerfile: deploy/account/Dockerfile
+    restart: unless-stopped
+    volumes: ["accounts:/data"]
+    ports: ["127.0.0.1:8080:8080"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+volumes:
+  accounts:

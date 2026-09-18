@@ -1,0 +1,9 @@
+- [ ] skillMarkdown 含完整 YAML front matter（id/title/version/status/contexts/prerequisites），以 --- 结尾
+- [ ] curriculumYaml 以 contexts 块开头，含 Python/local/标准库
+- [ ] curriculumYaml 的 prerequisites 全部来自基础课程图
+- [ ] 概念部分区分通用数据概念与 Python 语法
+- [ ] 至少一个预测题（预测后运行验证）
+- [ ] 至少一个可运行练习，含骨架代码
+- [ ] 练习用一个新抽象（文件 IO + 缺失值），未超出入门门槛
+- [ ] 仅使用公开示例数据，无敏感信息
+- [ ] 各字段长度符合上限（skillMarkdown≤900、curriculumYaml≤800、concept≤900、exercise≤900、checklist≤500 中文字符）

@@ -1,0 +1,29 @@
+contexts:
+  languages: [Python]
+  runtimes: [local]
+  frameworks: [标准库 csv]
+id: python.data-analysis.basic
+title: Python 数据分析入门：从 CSV 到平均值
+version: 0.1.0
+status: provisional
+prerequisites:
+  - programming.code-is-instructions
+  - programming.values-and-labels
+  - programming.expressions-and-changes
+  - programming.conditions
+  - programming.functions
+  - programming.collections
+outcomes:
+  - id: read-csv-file
+    title: 能读取 CSV 文件并逐行访问数据
+  - id: convert-types
+    title: 能将字符串转换为浮点数并处理转换失败
+  - id: handle-missing
+    title: 能识别缺失值并决定清洗策略
+  - id: compute-mean
+    title: 能用列表和内置函数计算列的平均值
+competencyMap:
+  read-csv-file: [programming.functions, programming.collections]
+  convert-types: [programming.expressions-and-changes, programming.conditions]
+  handle-missing: [programming.conditions, programming.debugging]
+  compute-mean: [programming.functions, programming.collections]

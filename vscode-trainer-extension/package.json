@@ -1,0 +1,20 @@
+{
+  "name": "trainer-learning-bridge",
+  "displayName": "Trainer Learning Bridge",
+  "version": "0.3.10",
+  "publisher": "trainer-local",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Education"],
+  "activationEvents": ["onView:trainer.overview", "onCommand:trainer.explainSelection", "onCommand:trainer.connect", "onCommand:trainer.disconnect"],
+  "extensionKind": ["ui"],
+  "capabilities": {"untrustedWorkspaces": {"supported": false}},
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {"activitybar": [{"id": "trainer", "title": "Trainer", "icon": "media/trainer.svg"}]},
+    "views": {"trainer": [{"id": "trainer.overview", "name": "连接与学习", "type": "webview"}]},
+    "commands": [{"command": "trainer.submissionPreflight", "title": "Trainer: 提交前检查未保存文件"}, {"command": "trainer.bindWorkspace", "title": "Trainer: 关联工作区与课程"}, {"command": "trainer.connectionStatus", "title": "Trainer: 检查连接状态"}, {"command": "trainer.connect", "title": "Trainer: 连接本地教学应用"}, {"command": "trainer.disconnect", "title": "Trainer: 撤销连接"}, {
+      "command": "trainer.explainSelection",
+      "title": "Trainer: 用 AI 导师理解选中代码"
+    }]
+  }
+}

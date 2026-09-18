@@ -1,0 +1,2 @@
+# The local Trainer AI gateway uses only Python's standard library.
+# Add pinned third-party dependencies here only when a production feature requires them.

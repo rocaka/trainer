@@ -1,0 +1,24 @@
+[Unit]
+Description=Trainer account sync service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trainer-account
+Group=trainer-account
+WorkingDirectory=/opt/trainer-account/app/gateway
+Environment=PYTHONUNBUFFERED=1
+Environment=TRAINER_ACCOUNT_DATABASE=/opt/trainer-account/data/accounts.sqlite3
+ExecStart=/opt/trainer-account/venv/bin/gunicorn --bind 127.0.0.1:8788 --workers 2 --threads 4 --timeout 40 --limit-request-line 4096 cloud_service:create_app()
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/trainer-account/data
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
