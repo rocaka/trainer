@@ -4,8 +4,8 @@
   import { trainerAction } from './gateway';
   import { invoke, isTauri } from '@tauri-apps/api/core';
 
-  let { profile, connected, onProfile, onSettings, onServices, onBuild } = $props<{
-    profile: { name: string; avatar: string }; connected:boolean; onProfile: () => void; onSettings: () => void; onServices: () => void; onBuild:(practice:boolean)=>void;
+  let { profile, connected, requestedCourse, onProfile, onSettings, onServices, onBuild, onSkills } = $props<{
+    profile: { name: string; avatar: string }; connected:boolean; requestedCourse:string; onProfile: () => void; onSettings: () => void; onServices: () => void; onBuild:(practice:boolean)=>void; onSkills:(mode:'learn'|'manage')=>void;
   }>();
   let courses = $state<CourseSummary[]>([]);
   let course = $state<Course>(foundationCourse);
@@ -36,6 +36,7 @@
     catch (e) { error = message(e); }
     finally { busy = false; }
   }
+  $effect(() => { if (requestedCourse && requestedCourse !== course.id) { loadLibrary().then(()=>chooseCourse(requestedCourse)); } });
   function chooseLesson(index: number) { lessonIndex = index; resetLesson(); }
   function resetLesson() {
     layer='explanation'; practicePage='observe'; rightTab=lesson?.practiceTask ? 'task' : 'coach';
@@ -101,7 +102,7 @@
         <div class="entry-title"><span class="blue-orb">⌁</span><div><strong>项目教学</strong><small>{course.title}</small></div></div>
         <p>从项目生成课程，在实践中补齐基础。</p>
         <button class="primary wide" disabled={busy} onclick={importProject}><span>▱＋</span> {busy?'正在处理…':'导入项目'} <span>→</span></button>
-        <button class="link-button" onclick={() => (document.getElementById('course-select') as HTMLSelectElement)?.focus()}>▣ 打开教学入口</button>
+        <button class="link-button" onclick={() => onSkills('learn')}>▣ 打开教学入口</button>
       </div>
       <div class="side-actions"><button onclick={() => onBuild(false)}>＋ 创建课程</button><button onclick={() => onBuild(true)}>⚒ 项目实战</button></div>
     </section>
@@ -115,7 +116,7 @@
         </button>
       {/each}
     </div>
-    <button class="knowledge-button" onclick={() => status='知识库管理将在下一阶段并入此窗口。'}>▥ 浏览 Skill 知识库</button>
+    <button class="knowledge-button" onclick={() => onSkills('manage')}>▥ 浏览 Skill 知识库</button>
     <button class="profile-strip" onclick={onProfile}><span class="avatar">{profile.avatar || '🧑‍💻'}</span><span><strong>{profile.name || '学习者'}</strong><small>能力 · 活动 · 成就</small></span><b>›</b></button>
   </aside>
 

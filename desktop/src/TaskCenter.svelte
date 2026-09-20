@@ -1,0 +1,18 @@
+<script lang="ts">
+  import { onMount,onDestroy } from 'svelte';import { trainerAction } from './gateway';
+  type Job={id:string;status:string;kind:string;message?:string;error?:string;completed?:number;total?:number;resumable:boolean;inFlight:boolean};
+  let jobs=$state<Job[]>([]);let archived=$state(false);let loading=$state(true);let busy=$state('');let error=$state('');let timer:number|undefined;
+  const ended=(j:Job)=>['completed','failed','paused','cancelled'].includes(j.status);
+  const label=(kind:string)=>({'plan':'课程展开','candidate':'候选教学','optimize-pending':'候选优化','optimize-skill':'Skill 优化'}[kind]??'历史任务');
+  const statusLabel=(value:string)=>({'queued':'排队中','running':'生成中','completed':'已完成','failed':'失败','paused':'已暂停','cancelled':'已取消'}[value]??value);
+  const message=(e:unknown)=>e instanceof Error?e.message:String(e);
+  async function refresh(){try{const v=await trainerAction<{jobs:Job[]}>(archived?'jobs-archived':'jobs');jobs=v.jobs??[];error=''}catch(e){error=message(e)}finally{loading=false}}
+  async function action(job:Job,kind:string){busy=job.id;try{await trainerAction(kind,{id:job.id,...(kind==='job-delete'?{confirmed:true}:{})});await refresh()}catch(e){error=message(e)}finally{busy=''}}
+  async function bulk(kind:'jobs-archive-finished'|'jobs-delete-archived'){if(kind==='jobs-delete-archived'&&!confirm('永久删除全部已清理的任务记录？已生成课程和候选不会删除。'))return;busy='bulk';try{await trainerAction(kind,kind==='jobs-delete-archived'?{confirmed:true}:{});await refresh()}catch(e){error=message(e)}finally{busy=''}}
+  async function toggle(){archived=!archived;loading=true;await refresh()}
+  onMount(()=>{refresh();timer=window.setInterval(refresh,2000)});onDestroy(()=>timer&&clearInterval(timer));
+</script>
+<div class="task-center-head"><label class="switch-row"><input type="checkbox" checked={archived} onchange={toggle}/><span>查看已清理</span></label><button class={archived?'danger':'secondary'} onclick={()=>bulk(archived?'jobs-delete-archived':'jobs-archive-finished')} disabled={!!busy||!jobs.length}>{archived?'彻底清空…':'一键清理已结束任务'}</button></div>
+{#if error}<div class="notice">{error}</div>{/if}
+<div class="task-center-list">{#if loading}<div class="skeleton-stack"><i></i><i></i><i></i></div>{/if}{#each jobs as job}<article class="job-card"><div class="job-main"><span class:running={job.status==='running'} class="job-state">{job.status==='running'?'◌':job.status==='completed'?'✓':job.status==='failed'?'!':'·'}</span><div><div class="job-title"><strong>{label(job.kind)}</strong><span>{statusLabel(job.status)}</span></div><p>{job.error??job.message??job.id}</p></div></div>{#if Number(job.total)>0}<div class="fluid-track"><i style={`width:${Math.min(100,(Number(job.completed??0)/Number(job.total))*100)}%`}></i></div><small>{job.completed??0} / {job.total} 模块</small>{/if}<div class="job-actions">{#if !job.inFlight&&ended(job)}<button onclick={()=>action(job,archived?'job-restore':'job-archive')} disabled={!!busy}>{archived?'恢复':'清理'}</button>{/if}{#if ['queued','running','paused'].includes(job.status)}<button onclick={()=>action(job,'job-cancel')} disabled={!!busy}>取消</button>{/if}{#if job.resumable&&['failed','paused','cancelled'].includes(job.status)}<button class="secondary" onclick={()=>action(job,'job-retry')} disabled={!!busy||job.inFlight}>继续</button>{/if}{#if archived}<button class="danger" onclick={()=>{if(confirm('永久删除这条任务记录？'))action(job,'job-delete')}} disabled={!!busy}>彻底删除</button>{/if}</div></article>{:else}{#if !loading}<div class="empty-compact">暂无生成任务</div>{/if}{/each}</div>
+<p class="task-footnote">取消会停止后续步骤；已生成课程和候选会保留。继续失败任务可能产生新的模型用量。</p>

@@ -216,6 +216,9 @@ async fn trainer_action(
     };
     let (method, path) = match action.as_str() {
         "jobs" => ("GET", "/v1/jobs".into()),
+        "jobs-archived" => ("GET", "/v1/jobs/archived".into()),
+        "jobs-archive-finished" => ("POST", "/v1/jobs/archive".into()),
+        "jobs-delete-archived" => ("POST", "/v1/jobs/delete".into()),
         "skills" => ("GET", "/v1/skills".into()),
         "pending" => ("GET", "/v1/pending".into()),
         "account" => ("GET", "/v1/account".into()),
@@ -236,6 +239,14 @@ async fn trainer_action(
         "submission-create" => ("POST", "/v1/course-submissions".into()),
         "pending-detail" => ("GET", format!("/v1/pending/{}", segment("id")?)),
         "pending-approve" => ("POST", format!("/v1/pending/{}/approve", segment("id")?)),
+        "pending-discard" => ("DELETE", format!("/v1/pending/{}", segment("id")?)),
+        "skill-detail" => ("GET", format!("/v1/skills/{}", segment("id")?)),
+        "skill-versions" => ("GET", format!("/v1/skills/{}/versions", segment("id")?)),
+        "job-cancel" => ("POST", format!("/v1/jobs/{}/cancel", segment("id")?)),
+        "job-retry" => ("POST", format!("/v1/jobs/{}/retry", segment("id")?)),
+        "job-archive" => ("POST", format!("/v1/jobs/{}/archive", segment("id")?)),
+        "job-restore" => ("POST", format!("/v1/jobs/{}/restore", segment("id")?)),
+        "job-delete" => ("POST", format!("/v1/jobs/{}/delete", segment("id")?)),
         "course-task" => {
             let plan = segment("planId")?;
             let lesson = segment("lessonId")?;
@@ -254,10 +265,10 @@ async fn trainer_action(
         .build()
         .map_err(|_| "无法创建本地连接")?;
     let url = format!("http://127.0.0.1:18787{path}");
-    let request = if method == "POST" {
-        client.post(url).json(&body)
-    } else {
-        client.get(url)
+    let request = match method {
+        "POST" => client.post(url).json(&body),
+        "DELETE" => client.delete(url),
+        _ => client.get(url),
     };
     let response = request
         .header("X-Trainer-Session", token)
