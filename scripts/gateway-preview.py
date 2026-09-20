@@ -53,9 +53,12 @@ def main():
         # Isolated diagnostics contain no user data. Emit a stack if startup
         # stalls, rather than leaving CI with only a readiness timeout.
         bootstrap = ('import faulthandler, runpy; '
+                     'print("Isolated backend bootstrap", flush=True); '
                      'faulthandler.dump_traceback_later(15, repeat=True); '
                      'runpy.run_path("server.py", run_name="__main__")')
-        child = subprocess.Popen([sys.executable, '-u', '-c', bootstrap], cwd=root / 'gateway', env=env)
+        child = subprocess.Popen([sys.executable, '-u', '-c', bootstrap], cwd=root / 'gateway', env=env,
+                                 stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=sys.stderr)
+        print('Isolated backend process created', flush=True)
         if '--managed' in sys.argv:
             def parent_closed():
                 # Parent owns this pipe. EOF also occurs if the desktop crashes.
