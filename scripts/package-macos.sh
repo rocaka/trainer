@@ -16,6 +16,7 @@ fi
 cd "$PACKAGE_DIR"
 swift build -c release
 
+rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$PACKAGE_DIR/.build/release/Trainer" "$APP_DIR/Contents/MacOS/Trainer"
 # Prefer the frozen, self-contained Gateway in release builds. The source
@@ -49,10 +50,13 @@ cp "$ROOT_DIR/gateway/backup.py" "$APP_DIR/Contents/Resources/gateway/"
 cp "$ROOT_DIR/gateway/cloud_client.py" "$ROOT_DIR/gateway/cloud_schema.py" "$APP_DIR/Contents/Resources/gateway/"
 rm -rf "$APP_DIR/Contents/Resources/gateway/__pycache__"
 mkdir -p "$APP_DIR/Contents/Resources/skills"
-# Seed missing assets only; approved/generated assets belong to the user.
-rsync -a --ignore-existing "$ROOT_DIR/skills/" "$APP_DIR/Contents/Resources/skills/"
-rm -rf "$APP_DIR/Contents/Resources/docs"
-cp -R "$ROOT_DIR/docs" "$APP_DIR/Contents/Resources/docs"
+# Only tracked public assets may enter a release. Local generated Skills,
+# pending approvals, plans and databases always remain outside the bundle.
+cd "$ROOT_DIR"
+git ls-files -z skills/core skills/verified docs | while IFS= read -r -d '' relative; do
+  mkdir -p "$APP_DIR/Contents/Resources/$(dirname "$relative")"
+  cp "$ROOT_DIR/$relative" "$APP_DIR/Contents/Resources/$relative"
+done
 
 ICON_SOURCE="$ROOT_DIR/assets/TrainerAppIcon.png"
 if [[ -f "$ICON_SOURCE" ]]; then
