@@ -36,6 +36,7 @@ def initialize(path):
         db.execute('''CREATE TABLE IF NOT EXISTS submission_bindings (
             binding_id TEXT NOT NULL, job_id TEXT NOT NULL,
             PRIMARY KEY(binding_id,job_id))''')
+        db.execute('CREATE TABLE IF NOT EXISTS submission_failures (job_id TEXT PRIMARY KEY, code TEXT NOT NULL)')
         # Recover pre-outbox results while their source snapshots still exist.
         for row in db.execute('''SELECT j.id,j.learner,s.payload FROM material_jobs j
             JOIN material_results r ON r.job_id=j.id
@@ -73,6 +74,14 @@ def load_materials(path, job):
     return json.loads(row['payload'])
 
 
+def recover_interrupted(path):
+    """Called once by the owning runtime at startup; never resends to AI."""
+    with connect(path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute("INSERT OR REPLACE INTO submission_failures SELECT id,'interrupted' FROM material_jobs WHERE status IN ('queued','evaluating')")
+        db.execute("UPDATE material_jobs SET status='failed',claim=NULL WHERE status IN ('queued','evaluating')")
+
+
 def complete(path, job_id, claim, result):
     """Trusted worker only: commit validated result and completion together."""
     payload = encode(result)
@@ -91,7 +100,7 @@ def complete(path, job_id, claim, result):
                 _completion_event(db, job_id, snapshot['learner'], snapshot['payload'])
 
 
-def enqueue(path, learner, request_key, fingerprint, evaluator_key, *, prepared=None):
+def enqueue(path, learner, request_key, fingerprint, evaluator_key, *, prepared=None, retry_failed=False):
     text(learner, 200)
     text(request_key, 200)
     # Evaluator key hashes provider/model/prompt-version/settings, not API secrets.
@@ -128,6 +137,12 @@ def enqueue(path, learner, request_key, fingerprint, evaluator_key, *, prepared=
                    (uuid.uuid4().hex, learner, fingerprint, evaluator_key))
         job = db.execute('''SELECT * FROM material_jobs WHERE learner=? AND fingerprint=?
             AND evaluator_key=?''', (learner, fingerprint, evaluator_key)).fetchone()
+        # Only a new explicit submission may retry. Replayed request keys above
+        # remain idempotent, and running/completed jobs are never resent.
+        if retry_failed and prepared is not None and job['status'] in ('failed', 'cancelled'):
+            db.execute("UPDATE material_jobs SET status='queued',claim=NULL WHERE id=?", (job['id'],))
+            db.execute('DELETE FROM submission_failures WHERE job_id=?', (job['id'],))
+            job = db.execute('SELECT * FROM material_jobs WHERE id=?', (job['id'],)).fetchone()
         db.execute('INSERT INTO material_requests VALUES(?,?,?)', (learner, request_key, job['id']))
         return dict(job)
 
@@ -144,7 +159,7 @@ def claim_next(path, job_id=None):
         return {**dict(job), 'status': 'evaluating', 'claim': claim}
 
 
-def finish(path, job_id, claim, status):
+def finish(path, job_id, claim, status, failure_code=None):
     if status not in ('completed', 'failed') or not isinstance(claim, str) or not claim:
         raise ValueError('任务结束状态无效')
     with connect(path) as db:
@@ -152,6 +167,8 @@ def finish(path, job_id, claim, status):
             AND status='evaluating' ''', (status, job_id, claim)).rowcount
         if not changed:
             raise ValueError('任务未在评判中或领取标识已失效')
+        if status == 'failed' and failure_code:
+            db.execute('INSERT OR REPLACE INTO submission_failures VALUES (?,?)', (job_id, failure_code))
 
 
 def cancel(path, learner, job_id):

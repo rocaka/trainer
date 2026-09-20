@@ -46,7 +46,7 @@ class CourseSubmission:
             raise ValueError('工作区关联课程与提交课程不一致')
         materials = prepare_materials(contract, binding['root'], answer=answer, guard=binding['guard'])
         job = queue.enqueue(self.database, learner, request_key, materials['materialFingerprint'],
-                            evaluator_key, prepared=(contract, materials))
+                            evaluator_key, prepared=(contract, materials), retry_failed=True)
         with connect(self.database) as db:
             db.execute('DELETE FROM submission_bindings WHERE binding_id=? AND job_id=?', (binding_id, job['id']))
             db.execute('INSERT INTO submission_bindings VALUES(?,?)', (binding_id, job['id']))
@@ -74,9 +74,14 @@ class CourseSubmission:
             if job is None:
                 raise ValueError('提交不存在')
             result = db.execute('SELECT result FROM material_results WHERE job_id=?', (job_id,)).fetchone()
+            failure = db.execute('SELECT code FROM submission_failures WHERE job_id=?', (job_id,)).fetchone()
         assessment = json.loads(result['result']) if result else None
         self.sync_completions()
-        return {'id': job['id'], 'status': job['status'], 'assessment': assessment}
+        from submission_worker import FAILURE_MESSAGES
+        code = failure['code'] if failure else 'unknown'
+        return {'id': job['id'], 'status': job['status'], 'assessment': assessment,
+                'failureCode': code if job['status'] == 'failed' else None,
+                'failureMessage': FAILURE_MESSAGES.get(code, FAILURE_MESSAGES['unknown']) if job['status'] == 'failed' else None}
 
     def material_storage(self, learner):
         return queue.material_storage(self.database, learner)

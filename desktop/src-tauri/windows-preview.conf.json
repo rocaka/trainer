@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {"../../dist/windows-gateway/trainer-gateway/": "gateway/"},
+    "icon": ["icons/icon.ico"],
+    "windows": {"nsis": {"installMode": "currentUser"}}
+  }
+}

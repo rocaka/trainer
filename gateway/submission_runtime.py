@@ -18,6 +18,7 @@ class SubmissionRuntime:
         root.mkdir(mode=0o700, exist_ok=True)
         database = private_database(root)
         queue.initialize(database)
+        queue.recover_interrupted(database)
         self.settings = settings
         self.service = CourseSubmission.from_pairing(data, database, pairing_service)
         self.service.sync_completions()

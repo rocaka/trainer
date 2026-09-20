@@ -13,6 +13,8 @@ from submission_snapshot import open_root
 
 
 def private_database(directory):
+    from platform_security import require_secure_submission
+    require_secure_submission()
     root = Path(directory)
     if not root.is_absolute() or '..' in root.parts or root == Path('/'):
         raise ValueError('需要明确的私有存储目录')

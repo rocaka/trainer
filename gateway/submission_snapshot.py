@@ -77,6 +77,8 @@ def read_file(root_fd, parts, limit):
 
 def open_root(root):
     """Anchor every directory hop; reject symlink swaps even above the project."""
+    from platform_security import require_secure_submission
+    require_secure_submission()
     descriptor = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
     try:
         for part in root.parts[1:]:

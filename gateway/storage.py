@@ -4,8 +4,10 @@ import shutil
 from pathlib import Path
 from contextlib import closing
 
-ASSETS = Path(__file__).resolve().parent.parent
-DATA = Path(os.environ.get('TRAINER_DATA_DIR', str(Path.home() / 'Library/Application Support/Trainer')))
+from platform_paths import assets_directory, data_directory
+
+ASSETS = assets_directory()
+DATA = data_directory()
 
 def initialize():
     DATA.mkdir(parents=True, exist_ok=True)

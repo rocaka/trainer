@@ -44,10 +44,10 @@ def call(path, payload, token='', base=None):
 
 
 def github_token():
-    result = subprocess.run(['/usr/bin/security','find-generic-password','-s','com.trainer.github','-a','oauth','-w'],
-                            capture_output=True, timeout=10)
-    if result.returncode: raise ValueError('请先连接 GitHub')
-    return result.stdout.decode().strip()
+    from system_credentials import read_secret
+    token = read_secret('com.trainer.github', 'oauth')
+    if not token: raise ValueError('请先连接 GitHub')
+    return token
 
 
 def identity(token):
@@ -172,7 +172,8 @@ def apply_remote(db, record, force=False):
             validate_plan(document, aggregate=True)
         except (ValueError, TypeError, json.JSONDecodeError):
             raise ValueError('云端课程不完整，未恢复到本机') from None
-        root = Path(os.environ.get('TRAINER_DATA_DIR', str(Path.home() / 'Library/Application Support/Trainer')))
+        from platform_paths import data_directory
+        root = data_directory()
         plans, saved = root / 'learning-plans', root / 'saved-courses'
         plans.mkdir(parents=True, exist_ok=True); saved.mkdir(parents=True, exist_ok=True)
         destination = plans / (p['plan_id'] + '.json')

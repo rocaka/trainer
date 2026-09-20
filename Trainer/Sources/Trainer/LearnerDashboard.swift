@@ -69,6 +69,7 @@ struct LearnerDashboard: View {
 
     private var githubStatusControl: some View {
         Menu {
+            if let detail = github.message { Text(detail) }
             Button("检查 GitHub 登录状态") { github.restore() }
             if github.connected {
                 Button("立即同步 GitHub 数据") { github.refresh() }.disabled(github.busy)
@@ -292,23 +293,26 @@ struct LearnerDashboard: View {
                     .frame(height: 230)
             } else {
                 let axes = radarAxes(data.languages)
-                ScrollView([.horizontal, .vertical]) {
+                HStack {
+                    Spacer(minLength: 0)
                     AbilityRadar(axes: axes)
-                        .frame(width: CGFloat(max(330, axes.count * 42)), height: CGFloat(max(285, axes.count * 42)))
+                        .frame(maxWidth: 380)
+                        .frame(height: 320)
                         .fluidGlow()
+                    Spacer(minLength: 0)
                 }.frame(height: 320)
             }
-            HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
                 Label("实线 · 课堂 AI 评估", systemImage: "chart.line.uptrend.xyaxis").foregroundStyle(.cyan)
                 Label("虚线 · GitHub 项目语言信号", systemImage: "point.3.connected.trianglepath.dotted").foregroundStyle(.orange)
             }.font(.caption)
-            ForEach(data.languages, id: \.name) { language in
-                Text("\(language.name) · \(language.score.map { "课堂 \($0) / 100" } ?? "课堂待评估") · \(language.evidenceCount) 条凭据")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .help("\(language.name)：\(language.evidenceCount) 条已提交记录。\(language.status)。课堂分数来自 AI 评估；GitHub 信号只表示该语言出现在已同步项目中。")
-            }
-            Text("实线刻度 0–100 是课堂凭据的 AI 评估均值；虚线按 GitHub 仓库语言字节占比归一化，仅表示项目接触面。两者不会相互换算，也不等同于整体掌握度。雷达最多展示信号最强的 8 种语言，完整清单见右侧。")
+            Text("展示最强的 \(min(8, data.languages.count)) 种语言 · 全部数据见语言档案")
                 .font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("如何理解这张图") {
+                Text("课堂评分为已评估凭据的均值（0–100）。GitHub 信号按代码字节相对值归一化，仅表示项目接触面，不代表掌握程度；没有课堂评分不等于零分。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+            }.font(.caption)
         }.frame(maxWidth: .infinity).dashboardCard()
     }
 
@@ -324,24 +328,57 @@ struct LearnerDashboard: View {
 
     private func dimensionTable(_ data: LearnerSummary) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label("语言能力档案", systemImage: "curlybraces").font(.headline)
-            ForEach(data.languages, id: \.name) { language in
-                VStack(spacing: 8) {
-                    HStack {
-                        Text(language.name); Spacer()
-                        Text(language.status).foregroundStyle(.secondary)
-                    }
-                    Text("\(language.evidenceCount) 条相关学习记录").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    if language.githubBytes > 0 {
-                        Text("GitHub：\(language.githubRepositoryCount) 个项目 · \(ByteCountFormatter.string(fromByteCount: Int64(language.githubBytes), countStyle: .file))")
-                            .font(.caption).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if let score = language.score { FluidBar(value: Double(score) / 100) }
-                    Divider()
-                }.font(.callout)
+            HStack {
+                Label("语言能力档案", systemImage: "curlybraces").font(.headline)
+                Spacer()
+                Text("\(data.languages.count) 种语言").font(.caption).foregroundStyle(.secondary)
             }
-            Text("课堂语言取自课程凭据；GitHub 语言来自可读取仓库的代码字节聚合。框架、源码和仓库名不会被同步。").font(.caption).foregroundStyle(.secondary)
+            if data.languages.isEmpty {
+                Text("完成课堂练习或同步 GitHub 后，这里会显示语言档案。")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
+                ForEach(data.languages, id: \.name) { language in
+                    languageCard(language)
+                }
+            }
+            Text("课堂评分与项目接触面分开记录，GitHub 数据不计入课堂得分。")
+                .font(.caption).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity).dashboardCard()
+    }
+
+    private func languageCard(_ language: LanguageAbility) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(language.name).font(.headline)
+                Spacer(minLength: 8)
+                if let score = language.score {
+                    Text("\(score)").font(.title3.bold()).foregroundStyle(.cyan)
+                    Text("/ 100").font(.caption2).foregroundStyle(.secondary)
+                } else {
+                    Text("未评估").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if let score = language.score {
+                ProgressView(value: Double(max(0, min(100, score))), total: 100)
+                    .tint(.cyan).accessibilityLabel("课堂评分 \(score) 分")
+            }
+            Label(language.evidenceCount > 0 ? "\(language.evidenceCount) 条课堂凭据" : "暂无课堂凭据", systemImage: "book.closed")
+                .foregroundStyle(.secondary)
+            if language.githubBytes > 0 {
+                Label("\(language.githubRepositoryCount) 个项目 · \(ByteCountFormatter.string(fromByteCount: Int64(language.githubBytes), countStyle: .file))", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .foregroundStyle(.orange)
+                    .help("GitHub 项目语言数据，不代表课堂评分")
+            } else {
+                Label("暂无 GitHub 数据", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
+        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.08)))
     }
 
     private func githubActivityPanel(_ github: GitHubSummary) -> some View {

@@ -56,3 +56,22 @@ class DispatcherTests(unittest.TestCase):
         self.service.sync_completions()
         self.service.sync_completions()
         self.assertEqual(self.completions, [('local', self.plan_id, 'lesson-1', first['id'], 'course-task')])
+
+    def test_failed_submission_explicit_retry_reaches_completion_and_binding(self):
+        first = self.submit()
+        def offline(*args): raise TimeoutError('private upstream details')
+        worker = SubmissionDispatcher(self.service, SubmissionConsent(self.db), offline)
+        worker.dispatch('local', first['id'])
+        worker.close()
+        failed = self.service.status('local', first['id'])
+        self.assertEqual(failed['failureCode'], 'timeout')
+        self.assertNotIn('private', str(failed))
+        retry = self.submit('new-user-click')
+        self.assertEqual(retry['status'], 'queued')
+        worker = SubmissionDispatcher(self.service, SubmissionConsent(self.db), lambda *args: {
+            'scores': {'criterion-1': 1}, 'quote': 'print(1)', 'feedback': '符合要求', 'nextStep': '运行验证'})
+        worker.dispatch('local', retry['id'])
+        worker.close()
+        self.assertEqual(self.service.status('local', retry['id'])['assessment']['outcome'], 'passed')
+        self.assertEqual(self.service.binding_status('binding')['status'], 'completed')
+        self.assertEqual(len(self.completions), 1)

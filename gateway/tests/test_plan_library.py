@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from plan_library import saved_plan, maintain_plan, preserve_course_reference
-from teaching_plan import FIELDS
+from teaching_plan import FIELDS, validate_plan
 
 class PlanLibraryTests(unittest.TestCase):
     def fixture(self, root):
@@ -14,7 +14,9 @@ class PlanLibraryTests(unittest.TestCase):
         (root / 'job-history').mkdir()
         (root / 'learning-plans' / (key + '.json')).write_text(json.dumps(plan))
         (root / 'job-history/old.json').write_text(json.dumps({'status': 'completed', 'recipe': {'payload': {'skillId': 'go'}}, 'result': {'planId': key}}))
-        return plan
+        # Legacy disk fixture intentionally omits contentType; the supported
+        # read-time migration adds it without changing any teaching content.
+        return validate_plan(plan, aggregate=True)
 
     def test_open_legacy_without_review_never_calls_model(self):
         import server

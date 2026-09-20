@@ -52,7 +52,8 @@ from storage import DATA
 from loop_http import dispatch as dispatch_learning_loop
 
 
-ROOT = Path(__file__).resolve().parent.parent
+from platform_paths import assets_directory, credentials_directory
+ROOT = assets_directory()
 PORT = int(os.environ.get("TRAINER_GATEWAY_PORT", "8787"))
 PROVIDER = os.environ.get("TRAINER_MODEL_PROVIDER", "deepseek").lower()
 MAX_REQUEST_BYTES = 24_000
@@ -101,20 +102,16 @@ DRAFT_SCHEMA: dict[str, Any] = {
 
 def load_api_key(provider: str, service=None) -> str:
     """Read a secret without ever returning it through the local HTTP API."""
+    if os.environ.get('TRAINER_DESKTOP_ISOLATED') == '1':
+        return ''
     environment_name = {'okai': 'TRAINER_OKAI_API_KEY', 'deepseek': 'DEEPSEEK_API_KEY'}.get(provider, 'OPENAI_API_KEY')
     if service is None and (key := os.environ.get(environment_name)):
         return key
     keychain_service = service or {'okai': 'trainer-okai-api-key', 'deepseek': 'trainer-deepseek-api-key'}.get(provider, 'trainer-openai-api-key')
+    from system_credentials import read_secret
     try:
-        result = subprocess.run(
-            ["security", "find-generic-password", "-a", "Trainer", "-s", keychain_service, "-w"],
-            capture_output=True,
-            check=True,
-            text=True,
-            timeout=10,
-        )
-        return result.stdout.strip()
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return read_secret(keychain_service, 'Trainer')
+    except ValueError:
         return ""
 
 
@@ -602,6 +599,8 @@ class TrainerGatewayHandler(BaseHTTPRequestHandler):
             self.handle_get()
 
     def handle_get(self):
+        from desktop_http import dispatch as dispatch_desktop
+        if dispatch_desktop(self, DATA): return
         from course_submission_http import dispatch as dispatch_course_submission
         if dispatch_course_submission(self): return
         if dispatch_learning_loop(self): return
@@ -659,10 +658,13 @@ class TrainerGatewayHandler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.UNAUTHORIZED, {'error': '需要当前 Trainer 会话'})
             return
         if self.path == "/health":
+            from platform_security import supports_secure_submission
             provider, model, _endpoint, api_key = provider_settings()
             self.send_json(HTTPStatus.OK, {
                 "ok": True, "provider": provider, "model": model, "configured": bool(api_key),
                 "capabilities": ["candidate-generation", "pending-approval", "project-import"],
+                "secureSubmissionSupported": supports_secure_submission(),
+                "submissionReady": getattr(self.server, 'course_submission_runtime', None) is not None,
             })
             return
         if self.path == "/v1/skills":
@@ -727,6 +729,8 @@ class TrainerGatewayHandler(BaseHTTPRequestHandler):
                 ACTIVE_REQUESTS -= 1
 
     def handle_post(self):
+        from desktop_http import dispatch as dispatch_desktop
+        if dispatch_desktop(self, DATA): return
         from course_submission_http import dispatch as dispatch_course_submission
         if dispatch_course_submission(self): return
         if dispatch_learning_loop(self): return
@@ -1011,25 +1015,30 @@ class TrainerGatewayHandler(BaseHTTPRequestHandler):
         """Avoid logging request bodies, which may contain private project context."""
 
 
-if __name__ == "__main__":
-    recover_jobs(run_recipe)
+def main(stop_event=None):
     server = ThreadingHTTPServer(("127.0.0.1", PORT), TrainerGatewayHandler)
+    # Acquire the port before recovering jobs: a second instance must not
+    # modify task state if the existing backend already owns the listener.
+    recover_jobs(run_recipe)
     # Pairing credentials deliberately live outside learning-data backups.
     from extension_pairing import Pairings
     from pairing_service import PairingService
-    credentials = Path.home() / '.trainer-credentials'
-    if credentials.is_symlink():
-        raise RuntimeError('Trainer credential directory must not be a symlink')
-    credentials.mkdir(mode=0o700, exist_ok=True)
-    credentials.chmod(0o700)
-    server.pairing_service = PairingService(Pairings(credentials / 'pairings.sqlite3'), os.environ.get('TRAINER_GATEWAY_SESSION_TOKEN', ''), DATA / 'learning-plans')
+    from platform_security import supports_secure_submission
+    server.pairing_service = None
     from submission_runtime import SubmissionRuntime
     server.course_submission_runtime = None
-    try:
-        server.course_submission_runtime = SubmissionRuntime(DATA, credentials, server.pairing_service,
-                                                            provider_settings, evaluate_code_submission)
-    except (OSError, ValueError, sqlite3.Error):
-        print('Trainer automatic submission unavailable: private storage initialization failed.')
+    if supports_secure_submission():
+        credentials = credentials_directory()
+        if credentials.is_symlink():
+            raise RuntimeError('Trainer credential directory must not be a symlink')
+        credentials.mkdir(mode=0o700, exist_ok=True)
+        credentials.chmod(0o700)
+        server.pairing_service = PairingService(Pairings(credentials / 'pairings.sqlite3'), os.environ.get('TRAINER_GATEWAY_SESSION_TOKEN', ''), DATA / 'learning-plans')
+        try:
+            server.course_submission_runtime = SubmissionRuntime(DATA, credentials, server.pairing_service,
+                                                                provider_settings, evaluate_code_submission)
+        except (OSError, ValueError, sqlite3.Error):
+            print('Trainer automatic submission unavailable: private storage initialization failed.')
     def sync_heartbeat():
         # The session only exists after the learner deliberately logs into
         # cloud sync.  This background loop is best-effort and never uploads
@@ -1042,6 +1051,11 @@ if __name__ == "__main__":
             except Exception:
                 pass
     threading.Thread(target=sync_heartbeat, name='trainer-cloud-sync', daemon=True).start()
+    if stop_event is not None:
+        def stop_when_parent_closes():
+            stop_event.wait()
+            server.shutdown()
+        threading.Thread(target=stop_when_parent_closes, name='trainer-parent-lifetime', daemon=True).start()
     print(f"Trainer Python gateway listening on http://127.0.0.1:{PORT}")
     try:
         server.serve_forever()
@@ -1049,3 +1063,7 @@ if __name__ == "__main__":
         if server.course_submission_runtime is not None:
             server.course_submission_runtime.close()
         server.server_close()
+
+
+if __name__ == '__main__':
+    main()

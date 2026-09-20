@@ -41,6 +41,16 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.enqueue('retry-click')['status'], 'failed')
         self.assertIsNone(queue.claim_next(self.path))
 
+    def test_restart_marks_inflight_without_resending_and_rejects_stale_worker(self):
+        self.enqueue()
+        claimed = queue.claim_next(self.path)
+        queue.recover_interrupted(self.path)
+        self.assertIsNone(queue.claim_next(self.path))
+        with connect(self.path) as db:
+            self.assertEqual(db.execute('SELECT code FROM submission_failures').fetchone()[0], 'interrupted')
+        with self.assertRaises(ValueError):
+            queue.finish(self.path, claimed['id'], claimed['claim'], 'completed')
+
     def test_wrong_claim_cannot_finish_or_cancel_running(self):
         self.enqueue()
         job = queue.claim_next(self.path)

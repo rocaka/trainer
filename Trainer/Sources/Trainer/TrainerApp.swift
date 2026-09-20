@@ -260,6 +260,7 @@ private struct CourseSubmissionRequest: Encodable {
 private struct CourseSubmissionResponse: Decodable {
     let id, status: String
     let assessment: CourseSubmissionAssessment?
+    let failureCode, failureMessage: String?
 }
 private struct CourseSubmissionAssessment: Decodable {
     let feedback, nextStep, outcome, method: String
@@ -1181,7 +1182,7 @@ final class WorkspaceModel: ObservableObject {
                     return
                 }
                 if ["failed", "cancelled"].contains(submission.status) {
-                    throw GatewayFailure(message: "评判未完成，可稍后重新提交检查。")
+                    throw GatewayFailure(message: submission.failureMessage ?? (submission.status == "cancelled" ? "任务已取消，可重新提交。" : "此次评判未完成，未产生有效评分；可重新提交。"))
                 }
             } catch {
                 guard !Task.isCancelled, projectPlan?.planId == planID, selectedConceptID == lessonID else { return }

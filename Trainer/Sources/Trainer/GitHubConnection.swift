@@ -118,14 +118,33 @@ final class GitHubConnectionModel: ObservableObject {
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw GitHubFailure("GitHub 响应无效。") }
         guard http.statusCode == 200 else {
+            if http.statusCode == 401 { connected = false }
             throw GitHubFailure(http.statusCode == 401 ? "GitHub 授权已失效，请重新连接。" : "GitHub 请求未完成（HTTP \(http.statusCode)），请稍后重试。")
         }
         return data
     }
 
     func restore() {
-        do { connected = try GitHubCredential.read() != nil }
-        catch { message = error.localizedDescription }
+        guard !busy else { return }
+        busy = true
+        operation = Task {
+            defer { busy = false }
+            do {
+                guard let token = try GitHubCredential.read() else { connected = false; return }
+                var request = URLRequest(url: URL(string: "https://api.github.com/user")!)
+                request.timeoutInterval = 15
+                request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+                request.setValue("Trainer", forHTTPHeaderField: "User-Agent")
+                let (_, response) = try await session.data(for: request)
+                try Task.checkCancellation()
+                guard let http = response as? HTTPURLResponse else { throw GitHubFailure("GitHub 登录状态暂时无法确认。") }
+                connected = http.statusCode == 200
+                message = connected ? "GitHub 登录有效；可立即同步最新仓库语言。" :
+                    (http.statusCode == 401 ? "GitHub 授权已失效，请重新连接；当前显示的是上次同步数据。" : "GitHub 登录状态检查失败（HTTP \(http.statusCode)）。")
+            } catch {
+                if !Task.isCancelled { connected = false; message = "无法确认 GitHub 登录状态：\(error.localizedDescription)" }
+            }
+        }
     }
 
     func connect(clientID: String) {

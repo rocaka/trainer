@@ -63,3 +63,23 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.run_job(evaluate=failed)['status'], 'failed')
         self.assertIsNone(self.run_job(evaluate=failed))
         self.assertEqual(self.calls, 1)
+        with connect(self.path) as db:
+            code = db.execute('SELECT code FROM submission_failures').fetchone()[0]
+        self.assertEqual(code, 'timeout')
+        self.assertNotIn('sensitive', code)
+
+    def test_explicit_retry_revalidates_materials_then_completes(self):
+        def fail(*args): raise TimeoutError('secret provider response')
+        self.run_job(evaluate=fail)
+        # Replaying the same submission cannot trigger a second model call.
+        replay = queue.enqueue(self.path, 'local', 'click', self.materials['materialFingerprint'],
+                               'b' * 64, prepared=(self.contract, self.materials), retry_failed=True)
+        self.assertEqual(replay['status'], 'failed')
+        retry = queue.enqueue(self.path, 'local', 'new-click', self.materials['materialFingerprint'],
+                              'b' * 64, prepared=(self.contract, self.materials), retry_failed=True)
+        self.assertEqual(retry['status'], 'queued')
+        self.assertEqual(self.run_job()['status'], 'completed')
+        duplicate = queue.enqueue(self.path, 'local', 'third-click', self.materials['materialFingerprint'],
+                                  'b' * 64, prepared=(self.contract, self.materials), retry_failed=True)
+        self.assertEqual(duplicate['status'], 'completed')
+        self.assertIsNone(self.run_job())

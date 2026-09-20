@@ -11,6 +11,7 @@ class ProviderTests(unittest.TestCase):
         def send(provider, endpoint, secret, body):
             self.assertNotIn('test-secret', json.dumps(body))
             self.assertIn('静态', body['messages'][0]['content'])
+            self.assertEqual(body['tools'][0]['function']['parameters']['properties']['quote']['enum'], ['说明'])
             return {'choices': [{'finish_reason': 'tool_calls', 'message': {'tool_calls': [
                 {'function': {'name': 'assess_submission', 'arguments': json.dumps({'scores': {'meaning': 1}, 'quote': '说明', 'feedback': '反馈', 'nextStep': '下一步'})}}]}}]}
         result = evaluate(exercise(), materials, evaluator_key(*config[:3]), settings=lambda: config, send=send)
