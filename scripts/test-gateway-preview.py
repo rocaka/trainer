@@ -5,13 +5,15 @@ import subprocess
 import sys
 import time
 import secrets
+import tempfile
 from urllib.request import Request
 from urllib.error import HTTPError
 from urllib.request import build_opener, ProxyHandler
 
 root = Path(__file__).resolve().parent.parent
+log = tempfile.TemporaryFile()
 child = subprocess.Popen([sys.executable, str(root / 'scripts/gateway-preview.py'), '--managed'],
-                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                         stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
 folder = None
 token = secrets.token_urlsafe(32)
 child.stdin.write(json.dumps({'session': token}).encode() + b'\n')
@@ -54,12 +56,18 @@ try:
         assert not (folder / 'credentials/pairings.sqlite3').exists(), 'unsupported platform must not create unprotected pairing tokens'
     child.stdin.close()
     child.wait(timeout=12)
-    output = child.stdout.read().decode()
+    log.seek(0)
+    output = log.read().decode('utf-8', errors='replace')
     assert 'automatic submission unavailable' not in output
     assert not folder.exists(), 'temporary folder was not reclaimed'
     print('PASS: isolated dashboard, private submission DB, parent EOF cleanup')
+except Exception:
+    log.seek(0)
+    print(log.read().decode('utf-8', errors='replace')[-12000:])
+    raise
 finally:
     if child.poll() is None:
         if not child.stdin.closed:
             child.stdin.close()
         child.wait(timeout=12)
+    log.close()
