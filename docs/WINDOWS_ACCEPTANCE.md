@@ -6,9 +6,9 @@
 
 ## 自动检查与产物边界
 
-仓库包含 `.github/workflows/windows-preview.yml`，仅支持手动 `workflow_dispatch`，不会因 push 或 PR 自动运行。配置文件已经准备好不等于工作流已经执行；执行记录、Windows 日志及产物必须另行验收。
+仓库包含 `.github/workflows/windows-preview.yml`，支持手动触发，以及 `codex/windows-preview` 分支推送触发；不会发布 Release 或部署服务。执行记录、Windows 日志及产物必须另行验收。
 
-手动运行前，把待验证代码作为明确的提交纳入仓库，再由有权限的维护者在 Actions 选择 **Windows preview checks → Run workflow**。本说明不自动上传代码或触发远程工作流。
+待验证代码以明确提交进入预览分支后自动检查，也可由维护者手动运行。Mac 与 Windows 保持同一仓库，管理方式见 `PLATFORM_MAINTENANCE.md`。
 
 工作流在干净的 `windows-latest` x64 环境执行：
 
@@ -18,9 +18,11 @@
 4. 运行平台路径、安全能力及凭据分派测试；不运行尚依赖 POSIX 的全部测试集。
 5. 运行 `scripts/test-windows-credentials.py`，仅创建随机名称的假凭据，覆盖缺失、保存、读取、更新、删除并清理。
 6. 运行 `scripts/test-gateway-preview.py`，验证隔离后端的空档案、会话检查、Windows 禁用提交以及关闭父管道后的回收。
-7. 验证教学资源清单，执行 `scripts/package-gateway.ps1`，上传完整后端目录，保留 7 天。
+7. 验证教学资源清单，执行 `scripts/package-gateway.ps1`，测试冻结后的后台启动、会话和退出。
+8. 使用 NSIS 覆盖配置打包桌面安装程序；在隔离用户数据目录安装，验证窗口、后台健康和正常关闭后的回收。
+9. 只上传测试通过的 `.exe` 安装包，保留 7 天。
 
-产物 `trainer-windows-x64-backend-preview-<run_id>` **仅是后端预览，不是可安装的 Trainer 桌面版**，不包含签名、更新或回滚验收。必须保留整个目录，不能只复制 exe。CI 不提供或使用真实 AI Key、GitHub Token、学习数据库和项目源码；凭据测试使用的假数据也不进入上传目录。上传范围仅为编译后的后端及仓库跟踪的教学资源，不上传 AppData、测试日志或整个工作目录。
+产物 `trainer-windows-x64-installer-<run_id>` 是未签名的桌面测试安装包，包含独立后台，不要求用户安装 Python；不代表更新、回滚或全部业务验收通过。CI 不提供或使用真实 AI Key、GitHub Token、学习数据库和项目源码；假凭据也不进入安装包。不上传 AppData、测试日志或整个工作目录。
 
 Actions 固定为官方发布提交，来源分别为 [checkout](https://github.com/actions/checkout/releases/tag/v7.0.1)、[setup-node](https://github.com/actions/setup-node/releases/tag/v7.0.0)、[setup-python](https://github.com/actions/setup-python/releases/tag/v7.0.0) 和 [upload-artifact](https://github.com/actions/upload-artifact/releases/tag/v7.0.1)。更新时应重新审核完整提交标识及官方说明。
 

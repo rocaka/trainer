@@ -92,7 +92,11 @@ jobs:
         working-directory: desktop
         run: npm run tauri build -- --config src-tauri/windows-preview.conf.json
 
-      # Only the compiled backend folder is uploaded. Never include test logs,
+      - name: Test installed desktop and bundled backend lifecycle
+        timeout-minutes: 5
+        run: ./scripts/test-windows-installer.ps1
+
+      # Only the installer is uploaded. Never include test logs,
       # AppData, databases, generated courses, credential stores, or the workspace.
       - name: Upload Windows installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
