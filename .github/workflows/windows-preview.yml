@@ -43,6 +43,10 @@ jobs:
           python-version: "3.13"
           architecture: x64
 
+      - name: Test isolated Gateway and owned-process shutdown
+        timeout-minutes: 3
+        run: python scripts/test-gateway-preview.py
+
       - name: Install locked frontend dependencies
         working-directory: desktop
         run: npm ci
@@ -73,10 +77,6 @@ jobs:
 
       - name: Test native Windows credential lifecycle with a disposable fake key
         run: python scripts/test-windows-credentials.py
-
-      - name: Test isolated Gateway and owned-process shutdown
-        timeout-minutes: 3
-        run: python scripts/test-gateway-preview.py
 
       - name: Check backend resource allowlist
         run: python scripts/test-bundle-spec.py

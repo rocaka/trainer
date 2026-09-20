@@ -50,7 +50,12 @@ def main():
         for marker in ('.migration-v1-complete', '.evidence-migration-v2-complete'):
             (data / marker).touch()
         print('隔离 Gateway：http://127.0.0.1:18787；退出后删除临时预览数据。', flush=True)
-        child = subprocess.Popen([sys.executable, str(root / 'gateway/server.py')], cwd=root / 'gateway', env=env)
+        # Isolated diagnostics contain no user data. Emit a stack if startup
+        # stalls, rather than leaving CI with only a readiness timeout.
+        bootstrap = ('import faulthandler, runpy; '
+                     'faulthandler.dump_traceback_later(15, repeat=True); '
+                     'runpy.run_path("server.py", run_name="__main__")')
+        child = subprocess.Popen([sys.executable, '-u', '-c', bootstrap], cwd=root / 'gateway', env=env)
         if '--managed' in sys.argv:
             def parent_closed():
                 # Parent owns this pipe. EOF also occurs if the desktop crashes.
