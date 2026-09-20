@@ -184,6 +184,109 @@ async fn owned_request(
     decode_response(response).await
 }
 
+/// Fixed native capability bridge. The webview selects a named Trainer action,
+/// never a URL, filesystem path or executable. This keeps the Windows UI on the
+/// same Gateway workflows as the Mac client without exposing an open proxy.
+#[tauri::command]
+async fn trainer_action(
+    state: tauri::State<'_, PreviewGateway>,
+    action: String,
+    payload: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let body = payload.unwrap_or_else(|| serde_json::json!({}));
+    if serde_json::to_vec(&body).map_err(|_| "请求格式无效")?.len() > 64 * 1024 {
+        return Err("请求内容超过本地接口上限".into());
+    }
+    let text = |key: &str| -> Result<String, String> {
+        body.get(key)
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty() && value.len() <= 200)
+            .map(str::to_owned)
+            .ok_or_else(|| "操作标识无效".into())
+    };
+    let segment = |key: &str| -> Result<String, String> {
+        let value = text(key)?;
+        if !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        {
+            return Err("操作标识包含不支持的字符".into());
+        }
+        Ok(value)
+    };
+    let (method, path) = match action.as_str() {
+        "jobs" => ("GET", "/v1/jobs".into()),
+        "skills" => ("GET", "/v1/skills".into()),
+        "pending" => ("GET", "/v1/pending".into()),
+        "account" => ("GET", "/v1/account".into()),
+        "integrations" => ("GET", "/v1/integrations/status".into()),
+        "editor-context" => ("GET", "/v1/editor/context".into()),
+        "profile-save" => ("POST", "/v1/me".into()),
+        "coach-turn" => ("POST", "/v1/coach/turn".into()),
+        "evidence-save" => ("POST", "/v1/evidence".into()),
+        "assessment" => ("POST", "/v1/assessments".into()),
+        "lesson-task-prepare" => ("POST", "/v1/lesson-task/prepare".into()),
+        "plan-generate" => ("POST", "/v1/learning/plan/jobs".into()),
+        "candidate-generate" => ("POST", "/v1/skills/generate/jobs".into()),
+        "teaching-signal" => ("POST", "/v1/teaching/signals".into()),
+        "account-claim" => ("POST", "/v1/account/claim".into()),
+        "account-sync" => ("POST", "/v1/account/sync".into()),
+        "account-sign-out" => ("POST", "/v1/account/sign-out".into()),
+        "submission-config" => ("GET", "/v1/course-submissions/config".into()),
+        "submission-create" => ("POST", "/v1/course-submissions".into()),
+        "pending-detail" => ("GET", format!("/v1/pending/{}", segment("id")?)),
+        "pending-approve" => ("POST", format!("/v1/pending/{}/approve", segment("id")?)),
+        "course-task" => {
+            let plan = segment("planId")?;
+            let lesson = segment("lessonId")?;
+            ("GET", format!("/v1/course-task/{plan}/{lesson}"))
+        }
+        "progress" => ("GET", format!("/v1/progress/{}", segment("planId")?)),
+        "job" => ("GET", format!("/v1/jobs/{}", segment("id")?)),
+        "submission" => ("GET", format!("/v1/course-submissions/{}", segment("id")?)),
+        _ => return Err("此桌面操作未开放".into()),
+    };
+    let token = session(&state)?;
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(190))
+        .build()
+        .map_err(|_| "无法创建本地连接")?;
+    let url = format!("http://127.0.0.1:18787{path}");
+    let request = if method == "POST" {
+        client.post(url).json(&body)
+    } else {
+        client.get(url)
+    };
+    let response = request
+        .header("X-Trainer-Session", token)
+        .send()
+        .await
+        .map_err(|_| "本地服务未完成此操作，请检查连接后重试")?;
+    decode_response(response).await
+}
+
+#[tauri::command]
+async fn import_project(
+    state: tauri::State<'_, PreviewGateway>,
+) -> Result<serde_json::Value, String> {
+    let folder = rfd::FileDialog::new()
+        .set_title("选择要生成教学课程的项目目录")
+        .pick_folder()
+        .ok_or_else(|| "已取消选择项目目录".to_string())?;
+    let canonical = folder.canonicalize().map_err(|_| "无法读取所选项目目录")?;
+    if !canonical.is_dir() {
+        return Err("所选位置不是可读取的项目目录".into());
+    }
+    owned_request(
+        state,
+        "/v1/projects/import/jobs",
+        Some(serde_json::json!({"path": canonical})),
+    )
+    .await
+}
+
 #[tauri::command]
 async fn desktop_runtime(
     state: tauri::State<'_, PreviewGateway>,
@@ -302,7 +405,9 @@ fn main() {
             ai_settings,
             save_ai_settings,
             courses,
-            course
+            course,
+            trainer_action,
+            import_project
         ])
         .build(tauri::generate_context!())
         .expect("Trainer desktop startup failed")
