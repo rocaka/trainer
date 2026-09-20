@@ -44,6 +44,7 @@ struct EditorContext: Decodable {
 final class GatewayController: ObservableObject {
     @Published private(set) var isAvailable = false
     private var process: Process?
+    private var processInput: Pipe?
 
     func ensureRunning() async {
         LocalGatewaySession.token = UserDefaults.standard.string(forKey: "gatewaySession") ?? ""
@@ -72,18 +73,29 @@ final class GatewayController: ObservableObject {
 
     private func launchBundledGateway() {
         guard process == nil else { return }
+        let frozen = Bundle.main.resourceURL?
+            .appendingPathComponent("gateway-runtime", isDirectory: true)
+            .appendingPathComponent("trainer-gateway", isDirectory: false)
         let bundled = Bundle.main.resourceURL?.appendingPathComponent("gateway", isDirectory: true)
         let development = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .deletingLastPathComponent().appendingPathComponent("gateway", isDirectory: true)
         let gatewayDirectory = (bundled?.appendingPathComponent("server.py").isFileURL == true && FileManager.default.fileExists(atPath: bundled!.appendingPathComponent("server.py").path)) ? bundled! : development
-        guard FileManager.default.fileExists(atPath: gatewayDirectory.appendingPathComponent("server.py").path) else { return }
+        let hasFrozenGateway = frozen.map { FileManager.default.isExecutableFile(atPath: $0.path) } ?? false
+        guard hasFrozenGateway || FileManager.default.fileExists(atPath: gatewayDirectory.appendingPathComponent("server.py").path) else { return }
         let task = Process()
-        let sessionToken = UUID().uuidString
+        let sessionToken = (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
         UserDefaults.standard.set(sessionToken, forKey: "gatewaySession")
         LocalGatewaySession.token = sessionToken
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["python3", "server.py"]
-        task.currentDirectoryURL = gatewayDirectory
+        if hasFrozenGateway, let frozen {
+            let input = Pipe()
+            task.executableURL = frozen
+            task.standardInput = input
+            processInput = input
+        } else {
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["python3", "server.py"]
+            task.currentDirectoryURL = gatewayDirectory
+        }
         var environment = ProcessInfo.processInfo.environment
         environment["TRAINER_GATEWAY_SESSION_TOKEN"] = sessionToken
         let cloudEndpoint = UserDefaults.standard.string(forKey: "trainer.cloud.endpoint")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -101,6 +113,10 @@ final class GatewayController: ObservableObject {
         task.standardError = FileHandle.nullDevice
         do {
             try task.run()
+            if hasFrozenGateway, let input = processInput,
+               let options = try? JSONSerialization.data(withJSONObject: ["session": sessionToken]) {
+                input.fileHandleForWriting.write(options + Data("\n".utf8))
+            }
             process = task
         } catch { return }
     }

@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PACKAGE_DIR="$ROOT_DIR/Trainer"
 APP_DIR="$ROOT_DIR/dist/Trainer.app"
 BUILD_VERSION="$(date +%s)"
+RELEASE_VERSION="${TRAINER_VERSION:-0.1.1}"
 GITHUB_CLIENT_ID="${TRAINER_GITHUB_CLIENT_ID:-}"
 if [[ -n "$GITHUB_CLIENT_ID" && ! "$GITHUB_CLIENT_ID" =~ '^[A-Za-z0-9_-]{8,128}$' ]]; then
   echo "TRAINER_GITHUB_CLIENT_ID 格式无效" >&2
@@ -17,6 +18,13 @@ swift build -c release
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$PACKAGE_DIR/.build/release/Trainer" "$APP_DIR/Contents/MacOS/Trainer"
+# Prefer the frozen, self-contained Gateway in release builds. The source
+# bundle remains as a development fallback and for transparent inspection.
+FROZEN_GATEWAY="$ROOT_DIR/dist/mac-gateway/trainer-gateway"
+if [[ -x "$FROZEN_GATEWAY/trainer-gateway" ]]; then
+  rm -rf "$APP_DIR/Contents/Resources/gateway-runtime"
+  cp -R "$FROZEN_GATEWAY" "$APP_DIR/Contents/Resources/gateway-runtime"
+fi
 # Preserve runtime SQLite data while replacing code.
 mkdir -p "$APP_DIR/Contents/Resources/gateway"
 cp "$ROOT_DIR/gateway/server.py" "$ROOT_DIR/gateway/validator.py" "$ROOT_DIR/gateway/repository.py" "$ROOT_DIR/gateway/learning_store.py" "$ROOT_DIR/gateway/jobs.py" "$ROOT_DIR/gateway/lab_runner.py" "$ROOT_DIR/gateway/project_context.py" "$ROOT_DIR/gateway/project_import.py" "$ROOT_DIR/gateway/pending_store.py" "$ROOT_DIR/gateway/optimization_authorization.py" "$ROOT_DIR/gateway/version_store.py" "$APP_DIR/Contents/Resources/gateway/"
@@ -46,6 +54,19 @@ rsync -a --ignore-existing "$ROOT_DIR/skills/" "$APP_DIR/Contents/Resources/skil
 rm -rf "$APP_DIR/Contents/Resources/docs"
 cp -R "$ROOT_DIR/docs" "$APP_DIR/Contents/Resources/docs"
 
+ICON_SOURCE="$ROOT_DIR/assets/TrainerAppIcon.png"
+if [[ -f "$ICON_SOURCE" ]]; then
+  ICONSET="$ROOT_DIR/dist/Trainer.iconset"
+  rm -rf "$ICONSET"
+  mkdir -p "$ICONSET"
+  for spec in "16 icon_16x16.png" "32 icon_16x16@2x.png" "32 icon_32x32.png" "64 icon_32x32@2x.png" "128 icon_128x128.png" "256 icon_128x128@2x.png" "256 icon_256x256.png" "512 icon_256x256@2x.png" "512 icon_512x512.png" "1024 icon_512x512@2x.png"; do
+    size="${spec%% *}"
+    name="${spec#* }"
+    sips -z "$size" "$size" "$ICON_SOURCE" --out "$ICONSET/$name" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/Trainer.icns"
+fi
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -54,8 +75,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>com.trainer.learning</string>
   <key>CFBundleName</key><string>Trainer</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.1</string>
+  <key>CFBundleShortVersionString</key><string>$RELEASE_VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD_VERSION</string>
+  <key>CFBundleIconFile</key><string>Trainer</string>
   <key>TrainerGitHubClientID</key><string>$GITHUB_CLIENT_ID</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>

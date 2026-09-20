@@ -1,0 +1,86 @@
+name: macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish macOS app
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      TRAINER_GITHUB_CLIENT_ID: ${{ vars.TRAINER_GITHUB_CLIENT_ID }}
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release tag"; exit 2; }
+
+      - name: Check out source without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Build Swift app and run Gateway tests
+        run: |
+          swift build -c release --package-path Trainer
+          PYTHONPATH=gateway python -m unittest discover -s gateway/tests -p 'test_*.py'
+
+      - name: Build self-contained Gateway
+        run: |
+          python -m pip install -r scripts/requirements-build.txt
+          python -m PyInstaller --distpath dist/mac-gateway --workpath dist/mac-gateway-build scripts/gateway-bundle.spec
+          python scripts/test-frozen-gateway-macos.py
+
+      - name: Build signed application bundle
+        env:
+          TRAINER_VERSION: ${{ inputs.tag }}
+        run: |
+          export TRAINER_VERSION="${TRAINER_VERSION#v}"
+          ./scripts/package-macos.sh
+          test -x dist/Trainer.app/Contents/MacOS/Trainer
+          test -x dist/Trainer.app/Contents/Resources/gateway-runtime/trainer-gateway
+          test -f dist/Trainer.app/Contents/Resources/Trainer.icns
+          codesign --verify --deep --strict dist/Trainer.app
+
+      - name: Create release archives
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          ARCH="$(uname -m)"
+          ditto -c -k --sequesterRsrc --keepParent dist/Trainer.app "dist/Trainer-${RELEASE_TAG}-macOS-${ARCH}.zip"
+          hdiutil create -volname Trainer -srcfolder dist/Trainer.app -ov -format UDZO "dist/Trainer-${RELEASE_TAG}-macOS-${ARCH}.dmg"
+          shasum -a 256 "dist/Trainer-${RELEASE_TAG}-macOS-${ARCH}.zip" "dist/Trainer-${RELEASE_TAG}-macOS-${ARCH}.dmg" > "dist/Trainer-${RELEASE_TAG}-SHA256.txt"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          ARCH="$(uname -m)"
+          gh release create "$RELEASE_TAG" \
+            "dist/Trainer-${RELEASE_TAG}-macOS-${ARCH}.zip" \
+            "dist/Trainer-${RELEASE_TAG}-macOS-${ARCH}.dmg" \
+            "dist/Trainer-${RELEASE_TAG}-SHA256.txt" \
+            --target "$GITHUB_SHA" \
+            --title "Trainer ${RELEASE_TAG} for macOS" \
+            --notes "Trainer macOS preview with the native learning workspace, self-contained local Gateway, Skill teaching workflows, GitHub insights, account sync foundations, and the new Trainer app icon. This preview is ad-hoc signed but not Apple-notarized; on first launch use Finder → Open if Gatekeeper asks."
